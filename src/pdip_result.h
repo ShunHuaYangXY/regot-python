@@ -22,7 +22,6 @@ struct PDIPResult
     bool                converged = false; // Whether termination criteria were met
     ResultMatrix        plan;              // Transport plan, shape (n, m)
     std::vector<double> obj_vals;          // Objective value per outer iteration
-    std::vector<double> mar_errs;          // Marginal error per outer iteration
     std::vector<double> run_times;         // Cumulative wall time per outer iteration (ms)
     // Optional PDIP-FP per-phase profiling times (seconds)
     double              t_build_B = 0.0;

@@ -152,19 +152,6 @@ static void matvec_B_block(const BlockB2& blk, const double* x, double* y) {
     }
 }
 
-static double marginal_error(int n, int m, const double* x, const double* eq_vector) {
-    Eigen::Map<const Vector> eq(eq_vector, m + n - 1);
-    Eigen::Map<const MatRowMajor> X(x, n, m);
-    Vector row_s = X.rowwise().sum();
-    Vector a_marg(n);
-    a_marg.head(n - 1) = eq.segment(m, n - 1);
-    a_marg(n - 1) = 1.0 - eq.segment(m, n - 1).sum();
-    const double err1 = (row_s - a_marg).norm();
-    Vector col_s = X.colwise().sum().transpose();
-    const double err2 = (col_s - eq.head(m)).norm();
-    return std::max(err1, err2);
-}
-
 static void build_B2_fixed(int M, int n, const double* scale, double fixed_threshold,
                            std::vector<double>& B_dense, BlockB2& block, bool fill_dense) {
     const int n12 = n - 1, N = M + n12;
@@ -360,8 +347,6 @@ void pdip_fp_internal(
     std::vector<double> delta_lambda_prev;
     std::vector<double> B_dense;
     BlockB2 block_b2;
-    std::vector<double> mar_err_history;
-    mar_err_history.reserve(static_cast<size_t>(max_iter));
     std::vector<double> obj_vals;
     obj_vals.reserve(static_cast<size_t>(max_iter));
     std::vector<double> run_times;
@@ -600,8 +585,6 @@ void pdip_fp_internal(
         }
         delta_lambda_prev = delta_lambda_final;
 
-        const double current_mar_err = marginal_error(n, m, x.data(), eq_vector.data());
-        mar_err_history.push_back(current_mar_err);
         double obj = 0;
         {
             Eigen::Map<const Vector> xv(x.data(), n_vars), cv(cost.data(), n_vars);
@@ -661,8 +644,7 @@ void pdip_fp_internal(
         }
         const bool by_gap_mu =
             (primal_gap < tol && dual_gap < tol && mu_stop < tol);
-        const bool by_mar = (current_mar_err < tol);
-        const bool stop = opts.fp_stop_gap_mu_only ? by_gap_mu : (by_gap_mu || by_mar);
+        const bool stop = by_gap_mu;
         if (stop) {
             result.converged = true;
             result.niter = iteration + 1;
@@ -677,7 +659,6 @@ void pdip_fp_internal(
         for (int j = 0; j < m; ++j)
             result.plan(i, j) = x[static_cast<size_t>(i * m + j)];
     result.obj_vals = std::move(obj_vals);
-    result.mar_errs = std::move(mar_err_history);
     result.run_times = std::move(run_times);
 #ifdef REGOT_PDIP_DEV
     result.t_build_B = prof.build_B_sec;

@@ -40,9 +40,6 @@ static bool s_timing_enabled() {
 }
 #endif
 static const double SMALL = 1e-50;
-static const int STABILIZATION_WINDOW = 30;
-static const double STABILIZATION_MAX_RANGE = 0.1;
-static const int STABILIZATION_MIN_ITER = 30;
 
 static void A_matvec(int n, int m, const Vector& x, Vector& y) {
     y.setZero(m + n - 1);
@@ -65,32 +62,6 @@ static void solve_AAT(const Vector& rhs_in, int n_supp, int m_dem, Vector& out) 
 static double step_size(const Vector& x, const Vector& dx) {
     ArrayXd cand = (dx.array() < 0).select(-x.array() / (dx.array() + SMALL), 1.0);
     return (std::min)(1.0, cand.minCoeff());
-}
-
-static double compute_mar_err(int n, int m, const Vector& x, const Vector& eq_vector,
-                              Vector* row_sums, Vector* col_sums, Vector* a_marg) {
-    Map<const MatRowMajor> X(x.data(), n, m);
-    *row_sums = X.rowwise().sum();
-    *col_sums = X.colwise().sum().transpose();
-    if (a_marg->size() != static_cast<Eigen::Index>(n)) a_marg->resize(n);
-    a_marg->head(n - 1) = eq_vector.tail(n - 1);
-    (*a_marg)(n - 1) = 1.0 - eq_vector.tail(n - 1).sum();
-    double err1 = (*row_sums - *a_marg).norm();
-    double err2 = (*col_sums - eq_vector.head(m)).norm();
-    return (std::max)(err1, err2);
-}
-
-static bool mar_err_stabilized(const std::vector<double>& mar_err_list) {
-    int len = static_cast<int>(mar_err_list.size());
-    if (len < STABILIZATION_MIN_ITER) return false;
-    int start = (std::max)(0, len - STABILIZATION_WINDOW);
-    double max_log = -1e30, min_log = 1e30;
-    for (int i = start; i < len; ++i) {
-        double v = std::log10((std::max)(mar_err_list[i], 1e-20));
-        max_log = (std::max)(max_log, v);
-        min_log = (std::min)(min_log, v);
-    }
-    return (max_log - min_log) <= STABILIZATION_MAX_RANGE;
 }
 
 static double dynamic_threshold(const Vector& D_B12, int iter_cur, int n_supp, int M_dem, double reg_val) {
@@ -257,10 +228,10 @@ void pdip_cg_internal(
     s = s.cwiseMax(1e-10);
 
     Vector delta_lambda_prev;
-    std::vector<double> mar_err_history, time_sec_history, obj_history;
+    std::vector<double> time_sec_history, obj_history;
     const int N_block = m + n - 1, n12 = n - 1;
     Vector B11_diag(m), B22_diag(n12), D_B12(m * n12);
-    Vector mar_row_sums(n), mar_col_sums(m), mar_a_marg(n), r_c_cor(n_vars), delta_s_final(n_vars), delta_x_final(n_vars);
+    Vector r_c_cor(n_vars), delta_s_final(n_vars), delta_x_final(n_vars);
 #ifdef REGOT_PDIP_DEV
     const bool do_timing = s_timing_enabled();
     if (do_timing) s_timing.reset();
@@ -312,6 +283,10 @@ void pdip_cg_internal(
         double t_blend = (std::min)(static_cast<double>(iteration), static_cast<double>(cg_decay)) / (std::max)(cg_decay, 1);
         double rel_tol = cg_rel_early * std::pow(cg_rel_late / cg_rel_early, t_blend);
         double cg_tol = (std::max)(rel_tol * r_p_norm, 1e-12);
+        // 外环 tol 较小时，Schur CG 相对残差不能以 0.1 为上限（MNIST/Fashion 会 NaN）。
+        const double scale_eq = 1.0 + eq_vec.norm();
+        cg_tol = (std::max)(cg_tol, 0.05 * tol * scale_eq);
+        const double rtol_cap = (std::min)(0.1, (std::max)(1e-8, 200.0 * tol));
 
         // 2.3 Predictor direction (first linear system)
         b1 = -s - r_dual;
@@ -323,7 +298,7 @@ void pdip_cg_internal(
         const Vector* x0_ptr = (delta_lambda_prev.size() == n_constraints) ? &delta_lambda_prev : nullptr;
         if (x0_ptr) delta_lambda = *x0_ptr;
         double c_norm = c_vec.norm() + 1e-50;
-        double rtol_cg = (std::min)(cg_tol / c_norm, 0.1);
+        double rtol_cg = (std::min)(cg_tol / c_norm, rtol_cap);
 #ifdef REGOT_PDIP_DEV
         t0 = std::chrono::steady_clock::now();
 #endif
@@ -352,7 +327,7 @@ void pdip_cg_internal(
         c_vec -= b2;
         delta_lambda_final = delta_lambda;
         c_norm = c_vec.norm() + 1e-50;
-        rtol_cg = (std::min)(cg_tol / c_norm, 0.1);
+        rtol_cg = (std::min)(cg_tol / c_norm, rtol_cap);
 #ifdef REGOT_PDIP_DEV
         t0 = std::chrono::steady_clock::now();
 #endif
@@ -373,40 +348,33 @@ void pdip_cg_internal(
         delta_lambda_prev.resize(n_constraints);
         delta_lambda_prev = delta_lambda_final;
 
-        // 2.5 Convergence check and history
+        // 2.5 Convergence check and history（先刷新 A^Tλ，再组 r_dual，与 FP 一致）
+        AT_matvec(n, m, lambda_val, at_lambda);
         r_dual = barrier * x + cost_vec + at_lambda - s;
         A_matvec(n, m, x, r_pri);
         r_pri.head(m) -= eq_vec.head(m);
         r_pri.tail(n - 1) -= eq_vec.tail(n - 1);
-        AT_matvec(n, m, lambda_val, at_lambda);
         double primal_gap = r_pri.norm() / (1.0 + eq_vec.norm());
         double dual_gap = r_dual.norm() / (1.0 + cost_vec.norm() + at_lambda.norm());
         mu = x.dot(s) / n_vars;
 
-        double current_mar_err = compute_mar_err(n, m, x, eq_vec, &mar_row_sums, &mar_col_sums, &mar_a_marg);
-        if (!std::isfinite(current_mar_err) || !std::isfinite(primal_gap) || !std::isfinite(dual_gap) || !std::isfinite(mu)) {
+        if (!std::isfinite(primal_gap) || !std::isfinite(dual_gap) || !std::isfinite(mu)) {
             // Numerics unstable: exit so the caller sees converged=false.
             break;
         }
-        // Early stop if marginal error blows up to avoid NaN plans and wasted wall time
-        if (current_mar_err > 1e3 || !x.allFinite() || !s.allFinite()) {
+        if (!x.allFinite() || !s.allFinite()) {
             result.niter = iteration + 1;
             break;
         }
-        mar_err_history.push_back(current_mar_err);
         time_sec_history.push_back(std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count() * 1000.0);
         obj_history.push_back(cost_vec.dot(x) + (reg_val / 2.0) * x.squaredNorm());
 
 #ifdef REGOT_PDIP_DEV
         if (do_timing) total_loop_sec += std::chrono::duration<double>(std::chrono::steady_clock::now() - t_iter_start).count();
 #endif
-        // gap+mu use tol; mar / stability window use opts.cg_mar_tol (default 1e-10)
-        bool by_gap = (primal_gap < tol && dual_gap < tol && mu < tol);
-        bool by_mar_tol = (current_mar_err < opts.cg_mar_tol);
-        bool by_stable = mar_err_stabilized(mar_err_history) && (current_mar_err < opts.cg_mar_tol);
-        const bool stop = opts.cg_stop_gap_mu_only
-            ? by_gap
-            : (by_gap || by_mar_tol || by_stable);
+        // 外环停机：仅归一化 primal_gap、dual_gap 与互补度 μ。
+        const bool by_gap = (primal_gap < tol && dual_gap < tol && mu < tol);
+        const bool stop = by_gap;
         if (stop) {
             result.converged = true;
             result.niter = iteration + 1;
@@ -421,7 +389,6 @@ void pdip_cg_internal(
         for (int j = 0; j < m; ++j)
             result.plan(i, j) = x(i * m + j);
     result.obj_vals = std::move(obj_history);
-    result.mar_errs = std::move(mar_err_history);
     result.run_times = std::move(time_sec_history);
 
 #ifdef REGOT_PDIP_DEV

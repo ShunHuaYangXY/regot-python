@@ -224,18 +224,6 @@ inline void parse_pdip_opts(
     {
         solver_opts.fp_exit_scale = py::float_(kwargs["fp_exit_scale"]);
     }
-    if (kwargs.contains("fp_stop_gap_mu_only"))
-    {
-        solver_opts.fp_stop_gap_mu_only = py::bool_(kwargs["fp_stop_gap_mu_only"]);
-    }
-    if (kwargs.contains("cg_stop_gap_mu_only"))
-    {
-        solver_opts.cg_stop_gap_mu_only = py::bool_(kwargs["cg_stop_gap_mu_only"]);
-    }
-    if (kwargs.contains("cg_mar_tol"))
-    {
-        solver_opts.cg_mar_tol = py::float_(kwargs["cg_mar_tol"]);
-    }
 }
 
 // Unified PDIP entry: naming aligned with QROT; inner_solver selects CG or FP (sparse Cholesky inner path for FP)
@@ -544,7 +532,6 @@ PYBIND11_MODULE(_internal, m) {
         .def_readwrite("converged", &PDIPResult::converged)
         .def_readwrite("plan", &PDIPResult::plan)
         .def_readwrite("obj_vals", &PDIPResult::obj_vals)
-        .def_readwrite("mar_errs", &PDIPResult::mar_errs)
         .def_readwrite("run_times", &PDIPResult::run_times)
         .def_readwrite("t_build_B", &PDIPResult::t_build_B)
         .def_readwrite("t_chol_factor", &PDIPResult::t_chol_factor)

@@ -71,8 +71,8 @@ A specialized primal-dual interior-point solver is also available for the QROT p
 
 - `qrot_pdip`: the primal-dual interior-point method. Pass `inner_solver="cg"` for a CG-based inner solver, or `inner_solver="fp"` for the fixed-point method inner solver. Default is `inner_solver="cg"`.
 - `pdip_cg` / `pdip_fp`: aliases for `qrot_pdip` with `inner_solver="cg"` and `"fp"`, respectively.
-- For `cg`: default `tol=1e-8` for normalized primal/dual gaps and `mu`. When `cg_stop_gap_mu_only` is false (default), marginal-error stopping uses `cg_mar_tol` (default `1e-10`), independent of `tol`. Pass `cg_mar_tol` in kwargs to override. Set `cg_stop_gap_mu_only=True` to require only gaps + `mu` (like the FP solver).
-- For `fp`: default `tol=1e-8`. By default, stopping uses only normalized primal/dual gaps and `mu` (`fp_stop_gap_mu_only=True`). Pass `fp_stop_gap_mu_only=False` if you also want to stop when marginal error `mar_err` falls below `tol`.
+- PDIP return fields are: `niter`, `converged`, `plan`, `obj_vals`, `run_times` (plus optional profiling times in dev builds).
+- For both `cg` and `fp`: outer-loop stopping uses normalized primal gap, normalized dual gap, and complementarity `mu` only.
 
 ## 💽 Installation
 
