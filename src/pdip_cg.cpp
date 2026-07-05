@@ -7,6 +7,7 @@
 #define NOMINMAX
 #include "pdip_solvers.h"
 #include "pdip_dev_flags.h"
+#include "pdip_output_sparsify.hpp"
 #include "pdip_transport_ops.hpp"
 #include "pdip_block_operator.h"
 #include <Eigen/Dense>
@@ -62,44 +63,6 @@ static void solve_AAT(const Vector& rhs_in, int n_supp, int m_dem, Vector& out) 
 static double step_size(const Vector& x, const Vector& dx) {
     ArrayXd cand = (dx.array() < 0).select(-x.array() / (dx.array() + SMALL), 1.0);
     return (std::min)(1.0, cand.minCoeff());
-}
-
-struct PdipGaps {
-    double obj = 0, primal_gap = 0, dual_gap = 0, mu = 0;
-};
-
-static PdipGaps compute_pdip_gaps(
-    int n, int m, double barrier, double reg_val,
-    const Vector& x, const Vector& s, const Vector& lambda_val,
-    const Vector& cost_vec, const Vector& eq_vec
-) {
-    const int n_vars = n * m;
-    Vector at_lambda(n_vars), r_dual(n_vars), r_pri(m + n - 1);
-    AT_matvec(n, m, lambda_val, at_lambda);
-    r_dual = barrier * x + cost_vec + at_lambda - s;
-    A_matvec(n, m, x, r_pri);
-    r_pri.head(m) -= eq_vec.head(m);
-    r_pri.tail(n - 1) -= eq_vec.tail(n - 1);
-    PdipGaps g;
-    g.primal_gap = r_pri.norm() / (1.0 + eq_vec.norm());
-    g.dual_gap = r_dual.norm() / (1.0 + cost_vec.norm() + at_lambda.norm());
-    g.mu = x.dot(s) / static_cast<double>(n_vars);
-    g.obj = cost_vec.dot(x) + (reg_val / 2.0) * x.squaredNorm();
-    return g;
-}
-
-// Zero x[i] when s/x > 1000 and x < 1e-3/n (n = source dimension).
-static int sparsify_x(Vector& x, const Vector& s, int n) {
-    const double x_thresh = 1e-3 / static_cast<double>((std::max)(n, 1));
-    const double sx_ratio_min = 1000.0;
-    int n_zeroed = 0;
-    for (Eigen::Index i = 0; i < x.size(); ++i) {
-        if (x(i) > 0 && x(i) < x_thresh && s(i) / (x(i) + SMALL) > sx_ratio_min) {
-            x(i) = 0.0;
-            ++n_zeroed;
-        }
-    }
-    return n_zeroed;
 }
 
 static double dynamic_threshold(const Vector& D_B12, int iter_cur, int n_supp, int M_dem, double reg_val) {
@@ -423,20 +386,9 @@ void pdip_cg_internal(
 
     // Phase 3: optional output sparsification, then fill result
     if (opts.sparsify_output) {
-        const PdipGaps before = compute_pdip_gaps(
-            n, m, barrier, reg_val, x, s, lambda_val, cost_vec, eq_vec);
-        result.sparsify_applied = true;
-        result.pre_sparsify_obj = before.obj;
-        result.pre_sparsify_primal_gap = before.primal_gap;
-        result.pre_sparsify_dual_gap = before.dual_gap;
-        result.pre_sparsify_mu = before.mu;
-        result.sparsify_n_zeroed = sparsify_x(x, s, n);
-        const PdipGaps after = compute_pdip_gaps(
-            n, m, barrier, reg_val, x, s, lambda_val, cost_vec, eq_vec);
-        result.post_sparsify_obj = after.obj;
-        result.post_sparsify_primal_gap = after.primal_gap;
-        result.post_sparsify_dual_gap = after.dual_gap;
-        result.post_sparsify_mu = after.mu;
+        output_sparsify::apply_output_sparsify(
+            result, n, m, barrier, reg_val,
+            x.data(), s.data(), lambda_val.data(), cost_vec.data(), eq_vec.data());
     }
 
     result.plan.resize(n, m);

@@ -224,7 +224,7 @@ inline void parse_pdip_opts(
     {
         solver_opts.fp_exit_scale = py::float_(kwargs["fp_exit_scale"]);
     }
-    // sparsify_output: CG final plan sparsification (default true)
+    // sparsify_output: final plan sparsification for CG/FP (default true)
     if (kwargs.contains("sparsify_output"))
     {
         solver_opts.sparsify_output = py::cast<bool>(kwargs["sparsify_output"]);

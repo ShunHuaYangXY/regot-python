@@ -4,6 +4,7 @@
 // 3) Optional FP per-phase timing in PDIPResult only when built with REGOT_PDIP_DEV (see pdip_dev_flags.h).
 #include "pdip_solvers.h"
 #include "pdip_dev_flags.h"
+#include "pdip_output_sparsify.hpp"
 #include "pdip_sparse_chol.h"
 #include "pdip_transport_ops.hpp"
 #include <Eigen/Dense>
@@ -653,7 +654,13 @@ void pdip_fp_internal(
         result.niter = iteration + 1;
     }
 
-    // Phase 3: fill result
+    // Phase 3: optional output sparsification, then fill result
+    if (opts.sparsify_output) {
+        output_sparsify::apply_output_sparsify(
+            result, n, m, barrier, reg_val,
+            x.data(), s.data(), lambda_val.data(), cost.data(), eq_vector.data());
+    }
+
     result.plan.resize(n, m);
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < m; ++j)
