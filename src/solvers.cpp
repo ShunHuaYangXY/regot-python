@@ -224,6 +224,11 @@ inline void parse_pdip_opts(
     {
         solver_opts.fp_exit_scale = py::float_(kwargs["fp_exit_scale"]);
     }
+    // sparsify_output: CG final plan sparsification (default true)
+    if (kwargs.contains("sparsify_output"))
+    {
+        solver_opts.sparsify_output = py::cast<bool>(kwargs["sparsify_output"]);
+    }
 }
 
 // Unified PDIP entry: naming aligned with QROT; inner_solver selects CG or FP (sparse Cholesky inner path for FP)
@@ -537,7 +542,17 @@ PYBIND11_MODULE(_internal, m) {
         .def_readwrite("t_chol_factor", &PDIPResult::t_chol_factor)
         .def_readwrite("t_chol_solve", &PDIPResult::t_chol_solve)
         .def_readwrite("t_eq_matvec", &PDIPResult::t_eq_matvec)
-        .def_readwrite("t_other", &PDIPResult::t_other);
+        .def_readwrite("t_other", &PDIPResult::t_other)
+        .def_readwrite("sparsify_applied", &PDIPResult::sparsify_applied)
+        .def_readwrite("sparsify_n_zeroed", &PDIPResult::sparsify_n_zeroed)
+        .def_readwrite("pre_sparsify_obj", &PDIPResult::pre_sparsify_obj)
+        .def_readwrite("post_sparsify_obj", &PDIPResult::post_sparsify_obj)
+        .def_readwrite("pre_sparsify_primal_gap", &PDIPResult::pre_sparsify_primal_gap)
+        .def_readwrite("post_sparsify_primal_gap", &PDIPResult::post_sparsify_primal_gap)
+        .def_readwrite("pre_sparsify_dual_gap", &PDIPResult::pre_sparsify_dual_gap)
+        .def_readwrite("post_sparsify_dual_gap", &PDIPResult::post_sparsify_dual_gap)
+        .def_readwrite("pre_sparsify_mu", &PDIPResult::pre_sparsify_mu)
+        .def_readwrite("post_sparsify_mu", &PDIPResult::post_sparsify_mu);
 
     py::class_<SinkhornResult>(m, "sinkhorn_result")
         .def(py::init<>())

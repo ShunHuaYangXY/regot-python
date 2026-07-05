@@ -29,6 +29,17 @@ struct PDIPResult
     double              t_chol_solve = 0.0;
     double              t_eq_matvec = 0.0;
     double              t_other = 0.0;
+    // CG output sparsification diagnostics (valid when sparsify_output was true)
+    bool                sparsify_applied = false;
+    int                 sparsify_n_zeroed = 0;
+    double              pre_sparsify_obj = 0.0;
+    double              post_sparsify_obj = 0.0;
+    double              pre_sparsify_primal_gap = 0.0;
+    double              post_sparsify_primal_gap = 0.0;
+    double              pre_sparsify_dual_gap = 0.0;
+    double              post_sparsify_dual_gap = 0.0;
+    double              pre_sparsify_mu = 0.0;
+    double              post_sparsify_mu = 0.0;
 };
 
 }  // namespace PDIP

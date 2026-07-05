@@ -19,8 +19,10 @@ struct PDIPSolverOpts
     double fixed_threshold;  // FP sparsity threshold (gates B2 path)
     int fp_max_iter;         // Max inner fixed-point iterations for FP
     double fp_exit_scale;    // Inner FP early-exit threshold scale
+    bool sparsify_output;    // CG: zero small entries in final plan (default on)
     PDIPSolverOpts():
-        cg_max_iter(1000), fixed_threshold(1e-9), fp_max_iter(800), fp_exit_scale(1e-2)
+        cg_max_iter(1000), fixed_threshold(1e-9), fp_max_iter(800), fp_exit_scale(1e-2),
+        sparsify_output(true)
     {}
 };
 
