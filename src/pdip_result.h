@@ -31,7 +31,9 @@ struct PDIPResult
     double              t_other = 0.0;
     // Output sparsification diagnostics (valid when sparsify_output was true)
     bool                sparsify_applied = false;
+    bool                sparsify_rollback = false;
     int                 sparsify_n_zeroed = 0;
+    double              sparsify_x_scale = 0.0;
     double              pre_sparsify_obj = 0.0;
     double              post_sparsify_obj = 0.0;
     double              pre_sparsify_primal_gap = 0.0;

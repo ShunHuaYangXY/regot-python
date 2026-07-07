@@ -657,7 +657,7 @@ void pdip_fp_internal(
     // Phase 3: optional output sparsification, then fill result
     if (opts.sparsify_output) {
         output_sparsify::apply_output_sparsify(
-            result, n, m, barrier, reg_val,
+            result, n, m, barrier, reg_val, tol,
             x.data(), s.data(), lambda_val.data(), cost.data(), eq_vector.data());
     }
 
